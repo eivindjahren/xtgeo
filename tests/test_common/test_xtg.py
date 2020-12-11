@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 import os
-import warnings
-import time
 import platform
-import six
+import time
+import warnings
 
 import pytest
+import six
 
 from xtgeo.common import XTGeoDialog
 
@@ -16,10 +16,6 @@ logger = xtg.basiclogger(__name__)
 
 if not xtg.testsetup():
     raise SystemExit
-
-td = xtg.tmpdir
-testpath = xtg.testpath
-
 
 # =============================================================================
 # Some useful functions

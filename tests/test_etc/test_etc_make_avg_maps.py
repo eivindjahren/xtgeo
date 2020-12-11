@@ -1,56 +1,54 @@
-import pytest
-import numpy as np
+from os.path import join
 
-from xtgeo.grid3d import Grid
-from xtgeo.grid3d import GridProperty
-from xtgeo.surface import RegularSurface
-from xtgeo.xyz import Polygons
-from xtgeo.common import XTGeoDialog
+import numpy as np
+import pytest
 
 import tests.test_common.test_xtg as tsetup
+from xtgeo.common import XTGeoDialog
+from xtgeo.grid3d import Grid, GridProperty
+from xtgeo.surface import RegularSurface
+from xtgeo.xyz import Polygons
 
 # set default level
 xtg = XTGeoDialog()
 
 logger = xtg.basiclogger(__name__)
-TMPD = xtg.tmpdir
 
 
 # ======================================================================================
 # This tests a combination of methods, in order to produce maps of HC thickness
 # ======================================================================================
-# gfile1 = '../xtgeo-testdata/3dgrids/bri/B.GRID'
-# ifile1 = '../xtgeo-testdata/3dgrids/bri/B.INIT'
 
-GFILE2 = "../xtgeo-testdata/3dgrids/reek/REEK.EGRID"
-IFILE2 = "../xtgeo-testdata/3dgrids/reek/REEK.INIT"
-RFILE2 = "../xtgeo-testdata/3dgrids/reek/REEK.UNRST"
 
-FFILE1 = "../xtgeo-testdata/polygons/reek/1/top_upper_reek_faultpoly.zmap"
+@pytest.fixture
+def reek_fault_polygons(testpath):
+    zmap_file = join(testpath, "polygons", "reek", "1", "top_upper_reek_faultpoly.zmap")
+    return Polygons(zmap_file, fformat="zmap")
+
+
+@pytest.fixture
+def reek_poro_property(reek_init_file, reek_grid):
+    grid_property = GridProperty()
+    return grid_property.from_file(
+        reek_init_file._file, fformat="init", name="PORO", grid=reek_grid
+    )
 
 
 @tsetup.skipifroxar
-def test_avg02():
+def test_avg02(reek_grid, reek_poro_property, reek_fault_polygons, tmpdir):
     """Make average map from Reek Eclipse."""
-    grd = Grid()
-    grd.from_file(GFILE2, fformat="egrid")
-
-    # get the poro
-    po = GridProperty()
-    po.from_file(IFILE2, fformat="init", name="PORO", grid=grd)
-
     # get the dz and the coordinates
-    dz = grd.get_dz(mask=False)
-    xc, yc, _zc = grd.get_xyz(mask=False)
+    dz = reek_grid.get_dz(mask=False)
+    xc, yc, _zc = reek_grid.get_xyz(mask=False)
 
     # get actnum
-    actnum = grd.get_actnum()
+    actnum = reek_grid.get_actnum()
 
     # convert from masked numpy to ordinary
     xcuse = np.copy(xc.values3d)
     ycuse = np.copy(yc.values3d)
     dzuse = np.copy(dz.values3d)
-    pouse = np.copy(po.values3d)
+    pouse = np.copy(reek_poro_property.values3d)
 
     # dz must be zero for undef cells
     dzuse[actnum.values3d < 0.5] = 0.0
@@ -80,39 +78,33 @@ def test_avg02():
     )
 
     # add the faults in plot
-    fau = Polygons(FFILE1, fformat="zmap")
-    fspec = {"faults": fau}
+    fspec = {"faults": reek_fault_polygons}
 
-    avgmap.quickplot(filename="TMP/tmp_poro2.png", xlabelrotation=30, faults=fspec)
-    avgmap.to_file("TMP/tmp.poro.gri", fformat="irap_ascii")
+    avgmap.quickplot(
+        filename=join(tmpdir, "tmp_poro2.png"), xlabelrotation=30, faults=fspec
+    )
+    avgmap.to_file(join(tmpdir, "tmp.poro.gri"), fformat="irap_ascii")
 
     logger.info(avgmap.values.mean())
     assert avgmap.values.mean() == pytest.approx(0.1653, abs=0.01)
 
 
 @tsetup.skipifroxar
-def test_avg03():
+def test_avg03(reek_grid, reek_poro_property, reek_fault_polygons, tmpdir):
     """Make average map from Reek Eclipse, speed up by zone_avgrd."""
-    grd = Grid()
-    grd.from_file(GFILE2, fformat="egrid")
-
-    # get the poro
-    po = GridProperty()
-    po.from_file(IFILE2, fformat="init", name="PORO", grid=grd)
-
     # get the dz and the coordinates
-    dz = grd.get_dz(mask=False)
-    xc, yc, _zc = grd.get_xyz(mask=False)
+    dz = reek_grid.get_dz(mask=False)
+    xc, yc, _zc = reek_grid.get_xyz(mask=False)
 
     # get actnum
-    actnum = grd.get_actnum()
+    actnum = reek_grid.get_actnum()
     actnum = actnum.get_npvalues3d()
 
     # convert from masked numpy to ordinary
     xcuse = xc.get_npvalues3d()
     ycuse = yc.get_npvalues3d()
     dzuse = dz.get_npvalues3d(fill_value=0.0)
-    pouse = po.get_npvalues3d(fill_value=0.0)
+    pouse = reek_poro_property.get_npvalues3d(fill_value=0.0)
 
     # dz must be zero for undef cells
     dzuse[actnum < 0.5] = 0.0
@@ -143,11 +135,12 @@ def test_avg03():
     )
 
     # add the faults in plot
-    fau = Polygons(FFILE1, fformat="zmap")
-    fspec = {"faults": fau}
+    fspec = {"faults": reek_fault_polygons}
 
-    avgmap.quickplot(filename="TMP/tmp_poro3.png", xlabelrotation=30, faults=fspec)
-    avgmap.to_file("TMP/tmp.poro3.gri", fformat="irap_ascii")
+    avgmap.quickplot(
+        filename=join(tmpdir, "tmp_poro3.png"), xlabelrotation=30, faults=fspec
+    )
+    avgmap.to_file(join(tmpdir, "tmp.poro3.gri"), fformat="irap_ascii")
 
     logger.info(avgmap.values.mean())
     assert avgmap.values.mean() == pytest.approx(0.1653, abs=0.01)

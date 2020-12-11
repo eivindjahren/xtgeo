@@ -1,40 +1,37 @@
-import pytest
+from os.path import join
+
 import numpy as np
 import numpy.ma as ma
+import pytest
 
-from xtgeo.grid3d import Grid
-from xtgeo.grid3d import GridProperty
-from xtgeo.surface import RegularSurface
-from xtgeo.common import XTGeoDialog
 import tests.test_common.test_xtg as tsetup
+from xtgeo.common import XTGeoDialog
+from xtgeo.grid3d import Grid, GridProperty
+from xtgeo.surface import RegularSurface
 
 # set default level
 xtg = XTGeoDialog()
 
 logger = xtg.basiclogger(__name__)
 
-ROFF1_GRID = "../xtgeo-testdata/3dgrids/eme/1/emerald_hetero_grid.roff"
-ROFF1_PROPS = "../xtgeo-testdata/3dgrids/eme/1/emerald_hetero.roff"
-
 
 @tsetup.skipifroxar
-def test_hcpvfz1():
+def test_hcpvfz1(testpath, tmpdir, eme1_path, emerald_grid):
     """HCPV thickness map."""
 
+    grd = emerald_grid
     # It is important that input are pure numpies, not masked
 
     logger.info("Name is %s", __name__)
-    grd = Grid()
-    logger.info("Import roff...")
-    grd.from_file(ROFF1_GRID, fformat="roff")
 
     # get the hcpv
+    prop_file = join(eme1_path, "emerald_hetero.roff")
+
     st = GridProperty()
     to = GridProperty()
 
-    st.from_file(ROFF1_PROPS, name="Oil_HCPV")
-
-    to.from_file(ROFF1_PROPS, name="Oil_bulk")
+    st.from_file(prop_file, name="Oil_HCPV")
+    to.from_file(prop_file, name="Oil_bulk")
 
     # get the dz and the coordinates, with no mask (ie get value for outside)
     dz = grd.get_dz(mask=False)
@@ -122,6 +119,6 @@ def test_hcpvfz1():
 
     logger.info("Speed zoneavg coarsen 2 is %s", t2)
 
-    hcmap.quickplot(filename="TMP/quickplot_hcpv.png")
-    hcmap2.quickplot(filename="TMP/quickplot_hcpv_zavg_coarsen.png")
+    hcmap.quickplot(filename=join(tmpdir, "quickplot_hcpv.png"))
+    hcmap2.quickplot(filename=join(tmpdir, "quickplot_hcpv_zavg_coarsen.png"))
     logger.debug(hcmap.values.mean())

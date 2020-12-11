@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import math
-import pytest
+from os import path
+
 import numpy as np
+import pytest
 
 import xtgeo
 import xtgeo.common.calc as xcalc
@@ -11,14 +13,27 @@ import xtgeo.cxtgeo._cxtgeo as _cxtgeo
 xtg = xtgeo.XTGeoDialog()
 logger = xtg.basiclogger(__name__)
 
-# =============================================================================
-# Do tests of simple calc routines
-# =============================================================================
-TESTGRID = "../xtgeo-testdata/3dgrids/etc/gridqc1.roff"
-TESTGRID_TBULK = "../xtgeo-testdata/3dgrids/etc/gridqc1_totbulk.roff"
-TESTGRID2 = "../xtgeo-testdata/3dgrids/etc/banal6.roff"
-TESTGRID3 = "../xtgeo-testdata/3dgrids/etc/box.roff"
-TESTGRID4 = "../xtgeo-testdata/3dgrids/etc/twocell.roff"
+
+@pytest.fixture
+def box_grid(testpath):
+    return xtgeo.Grid(path.join(testpath, "3dgrids", "etc", "box.roff"))
+
+
+@pytest.fixture
+def banal6_grid(banal6_grid_file):
+    return xtgeo.Grid(banal6_grid_file)
+
+
+@pytest.fixture
+def gridqc1(testpath):
+    return xtgeo.Grid(path.join(testpath, "3dgrids", "etc", "gridqc1.roff"))
+
+
+@pytest.fixture
+def gridqc1_totbulk(testpath):
+    return xtgeo.gridproperty_from_file(
+        path.join(testpath, "3dgrids", "etc", "gridqc1_totbulk.roff")
+    )
 
 
 def test_vectorinfo2():
@@ -270,13 +285,12 @@ def test_vectorpair_angle3d():
         angle1 = xcalc.vectorpair_angle3d((0, 0, 0, 99), (1, 1, 0), (0, 4, 0))
 
 
-def test_x_cellangles():
+def test_x_cellangles(gridqc1):
     """Test x_minmax_cellangles* functions (lowlevel call)"""
 
-    grd = xtgeo.Grid(TESTGRID)
-    cell1 = grd.get_xyz_cell_corners((6, 4, 1))
-    cell2 = grd.get_xyz_cell_corners((6, 3, 1))
-    cell3 = grd.get_xyz_cell_corners((4, 7, 1))
+    cell1 = gridqc1.get_xyz_cell_corners((6, 4, 1))
+    cell2 = gridqc1.get_xyz_cell_corners((6, 3, 1))
+    cell3 = gridqc1.get_xyz_cell_corners((4, 7, 1))
 
     _ier, amin, amax = _cxtgeo.x_minmax_cellangles_topbase(cell1, 0, 1)
 
@@ -303,45 +317,40 @@ def test_x_cellangles():
     assert amax == pytest.approx(104.95, abs=0.01)
 
 
-def test_get_cell_volume():
-    """Test hexahedron (cell) bulk volume valculation"""
-
-    # box
-    grd = xtgeo.Grid(TESTGRID3)
-
-    vol1 = grd.get_cell_volume((1, 1, 1))
+def test_get_cell_volume_box(box_grid):
+    vol1 = box_grid.get_cell_volume((1, 1, 1))
     assert vol1 == pytest.approx(3821600, rel=0.01)
 
-    # banal6
-    grd = xtgeo.Grid(TESTGRID2)
 
-    vol1 = grd.get_cell_volume((1, 1, 1))
-    vol2 = grd.get_cell_volume((4, 1, 1))
-    vol3 = grd.get_cell_volume((1, 2, 1))
-    vol4 = grd.get_cell_volume((3, 1, 2))
+def test_get_cell_volume_banal6(banal6_grid):
+
+    vol1 = banal6_grid.get_cell_volume((1, 1, 1))
+    vol2 = banal6_grid.get_cell_volume((4, 1, 1))
+    vol3 = banal6_grid.get_cell_volume((1, 2, 1))
+    vol4 = banal6_grid.get_cell_volume((3, 1, 2))
 
     assert vol1 == pytest.approx(1679.7, rel=0.01)
     assert vol2 == pytest.approx(2070.3, rel=0.01)
     assert vol3 == pytest.approx(1289.1, rel=0.01)
     assert vol4 == pytest.approx(593.75, rel=0.01)
 
-    # gridqc1
-    grd = xtgeo.Grid(TESTGRID)
-    tbulk_rms = xtgeo.gridproperty_from_file(TESTGRID_TBULK)
+
+def test_get_cell_volume_gridqc1(gridqc1, gridqc1_totbulk):
+    """Test hexahedron (cell) bulk volume valculation"""
 
     rmean = []
     for prec in [1, 2, 4]:
         ntot = 0
         nfail = 0
         ratioarr = []
-        for icol in range(grd.ncol):
-            for jrow in range(grd.nrow):
-                for klay in range(grd.nlay):
-                    vol1a = grd.get_cell_volume(
+        for icol in range(gridqc1.ncol):
+            for jrow in range(gridqc1.nrow):
+                for klay in range(gridqc1.nlay):
+                    vol1a = gridqc1.get_cell_volume(
                         (icol, jrow, klay), zerobased=True, precision=prec
                     )
                     if vol1a is not None:
-                        vol1b = tbulk_rms.values[icol, jrow, klay]
+                        vol1b = gridqc1_totbulk.values[icol, jrow, klay]
                         ratio = vol1a / vol1b
                         ratioarr.append(ratio)
                         ntot += 1

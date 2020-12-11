@@ -14,11 +14,11 @@ if "TRAVISRUN" in os.environ:
     TRAVIS = True
 
 
-TESTFILE = "../xtgeo-testdata/3dgrids/reek/REEK.EGRID"
-TESTFOLDER = "../xtgeo-testdata/3dgrids/reek"
-TESTNOEXISTFILE = "../xtgeo-testdata/3dgrids/reek/NOSUCH.EGRID"
-TESTNOEXISTFOLDER = "../xtgeo-testdata/3dgrids/noreek/NOSUCH.EGRID"
-TESTSURF = "../xtgeo-testdata/surfaces/reek/1/topupperreek.gri"
+@pytest.fixture
+def topupperreek_surface(testpath):
+    return xtgeo.RegularSurface(
+        os.path.join(testpath, "surfaces", "reek", "1", "topupperreek.gri")
+    )
 
 
 def test_generic_hash():
@@ -40,9 +40,9 @@ def test_generic_hash():
     assert ahash == "fd6639af1cc457b72148d78e90df45df4d344ca3b66fa44598148ce4"
 
 
-def test_resolve_alias():
+def test_resolve_alias_md5(topupperreek_surface):
     """Testing resolving file alias function."""
-    surf = xtgeo.RegularSurface(TESTSURF)
+    surf = topupperreek_surface
     md5hash = surf.generate_hash("md5")
 
     mname = xtgeo._XTGeoFile("whatever/$md5sum.gri", obj=surf)
@@ -51,10 +51,16 @@ def test_resolve_alias():
     mname = xtgeo._XTGeoFile(pathlib.Path("whatever/$md5sum.gri"), obj=surf)
     assert str(mname.file) == f"whatever/{md5hash}.gri"
 
+
+def test_resolve_alias_random(topupperreek_surface):
+    surf = topupperreek_surface
     mname = xtgeo._XTGeoFile("whatever/$random.gri", obj=surf)
     assert len(str(mname.file)) == 45
 
-    # use $fmu.v1 schema
+
+def test_resolve_alias_fmu_v1(topupperreek_surface):
+    surf = topupperreek_surface
+
     surf.metadata.opt.shortname = "topValysar"
     surf.metadata.opt.description = "Depth surface"
 
@@ -64,113 +70,71 @@ def test_resolve_alias():
 
 @tsetup.skipifmac
 @tsetup.skipifwindows
-def test_xtgeocfile():
-    """Test basic system file io etc functions"""
-    gfile = xtgeo._XTGeoFile(TESTFILE)
-    xfile = xtgeo._XTGeoFile(TESTNOEXISTFILE)
-    yfile = xtgeo._XTGeoFile(TESTNOEXISTFOLDER)
-    gfolder = xtgeo._XTGeoFile(TESTFOLDER)
+def test_xtgeocfile_reek_egrid(reek_egrid_file):
+    assert isinstance(reek_egrid_file, xtgeo._XTGeoFile)
+    assert isinstance(reek_egrid_file._file, pathlib.Path)
 
-    assert isinstance(gfile, xtgeo._XTGeoFile)
+    assert reek_egrid_file._memstream is False
+    assert reek_egrid_file._mode == "rb"
+    assert reek_egrid_file._delete_after is False
+    assert pathlib.Path(reek_egrid_file.name) == reek_egrid_file._file.resolve()
+    assert reek_egrid_file.check_folder()
 
-    assert isinstance(gfile._file, pathlib.Path)
+    assert "Swig" in str(reek_egrid_file.get_cfhandle())
+    assert reek_egrid_file.cfclose() is True
 
-    assert gfile._memstream is False
-    assert gfile._mode == "rb"
-    assert gfile._delete_after is False
-    assert gfile.name == os.path.abspath(TESTFILE)
-    assert xfile.name == os.path.abspath(TESTNOEXISTFILE)
-
-    # exists, check_*
-    assert gfile.exists() is True
-    assert gfolder.exists() is True
-    assert xfile.exists() is False
-
-    assert gfile.check_file() is True
-    assert xfile.check_file() is False
-    assert yfile.check_file() is False
-
-    with pytest.raises(OSError):
-        xfile.check_file(raiseerror=OSError)
-
-    assert gfile.check_folder() is True
-    assert xfile.check_folder() is True
-    assert yfile.check_folder() is False
-    with pytest.raises(OSError):
-        yfile.check_folder(raiseerror=OSError)
-
-    assert "Swig" in str(gfile.get_cfhandle())
-    assert gfile.cfclose() is True
-
-    # extensions:
-    stem, suff = gfile.splitext(lower=False)
+    stem, suff = reek_egrid_file.splitext(lower=False)
     assert stem == "REEK"
     assert suff == "EGRID"
 
 
 @tsetup.skipifmac
 @tsetup.skipifwindows
-def test_xtgeocfile_fhandle():
+def test_xtgeocfile_reek_folder(reek_egrid_file):
+    reek_folder = xtgeo._XTGeoFile(reek_egrid_file._file.parent)
+
+    assert reek_folder.exists()
+    assert reek_folder.check_folder()
+
+
+@tsetup.skipifmac
+@tsetup.skipifwindows
+def test_xtgeocfile_no_exists(testpath):
+    nonexistant_file = xtgeo._XTGeoFile(
+        os.path.join(testpath, "3dgrids", "reek", "NOSUCH.EGRID")
+    )
+    nonexistant_folder = xtgeo._XTGeoFile(
+        os.path.join(testpath, "3dgrids", "noreek", "NOSUCH.EGRID")
+    )
+
+    assert pathlib.Path(nonexistant_file.name) == nonexistant_file._file.resolve()
+    assert pathlib.Path(nonexistant_folder.name) == nonexistant_folder._file.resolve()
+
+    assert not nonexistant_file.exists()
+    assert not nonexistant_folder.exists()
+
+    assert not nonexistant_file.check_file()
+    assert not nonexistant_folder.check_folder()
+
+    with pytest.raises(OSError):
+        nonexistant_folder.check_folder(raiseerror=OSError)
+
+    with pytest.raises(OSError):
+        nonexistant_file.check_file(raiseerror=OSError)
+
+
+@tsetup.skipifmac
+@tsetup.skipifwindows
+def test_xtgeocfile_fhandle(reek_egrid_file):
     """Test in particular C handle SWIG system"""
 
-    gfile = xtgeo._XTGeoFile(TESTFILE)
-
-    chandle1 = gfile.get_cfhandle()
-    chandle2 = gfile.get_cfhandle()
-    assert gfile._cfhandlecount == 2
+    chandle1 = reek_egrid_file.get_cfhandle()
+    chandle2 = reek_egrid_file.get_cfhandle()
+    assert reek_egrid_file._cfhandlecount == 2
     assert chandle1 == chandle2
-    assert gfile.cfclose() is False
-    assert gfile.cfclose() is True
+    assert reek_egrid_file.cfclose() is False
+    assert reek_egrid_file.cfclose() is True
 
     # try to close a cfhandle that does not exist
     with pytest.raises(RuntimeError):
-        gfile.cfclose()
-
-
-# @tsetup.skipifwindows
-# @tsetup.skipifpython2
-# def test_xtgeocfile_bytesio():
-
-#     with open(TESTFILE, "rb") as fin:
-#         stream = io.BytesIO(fin.read())
-
-#     gfile = xtgeo._XTGeoFile(stream)
-
-#     assert isinstance(gfile, xtgeo._XTGeoFile)
-
-#     assert "Swig" in str(gfile.fhandle)
-
-#     assert gfile.close() is True
-
-
-# @tsetup.equinor
-# def test_check_folder():
-#     """testing that folder checks works in different scenaria"""
-
-#     status = xsys.check_folder("setup.py")
-#     assert status is True
-
-#     status = xsys.check_folder("xxxxx/whatever")
-#     assert status is False
-
-#     status = xsys.check_folder("src/xtgeo")
-#     assert status is True
-
-#     if "WINDOWS" in platform.system().upper():
-#         return
-#     if not TRAVIS:
-#         print("Non travis test")
-#         # skipped for travis, as travis runs with root rights
-#         folder = "TMP/nonwritable"
-#         myfile = os.path.join(folder, "somefile")
-#         if not os.path.exists(folder):
-#             os.mkdir(folder, 0o440)
-
-#         status = xsys.check_folder(myfile)
-#         assert status is False
-
-#         status = xsys.check_folder(folder)
-#         assert status is False
-
-#         with pytest.raises(ValueError):
-#             xsys.check_folder(folder, raiseerror=ValueError)
+        reek_egrid_file.cfclose()

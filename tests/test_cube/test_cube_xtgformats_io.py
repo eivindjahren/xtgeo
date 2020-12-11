@@ -2,6 +2,8 @@
 """Testing new xtg formats."""
 import pathlib
 import uuid
+from os.path import join
+
 import pytest
 
 import xtgeo
@@ -13,15 +15,12 @@ logger = xtg.basiclogger(__name__)
 if not xtg.testsetup():
     raise SystemExit
 
-TMPD = xtg.tmpdir
-TPATH = xtg.testpath
 
-TESTSET1 = "../xtgeo-testdata/cubes/reek/syntseis_20030101_seismic_depth_stack.segy"
-
-
-def test_cube_export_import_many():
+def test_cube_export_import_many(tmpdir, testpath):
     """Test exporting etc to xtgregcube format."""
-    cube1 = xtgeo.Cube(TESTSET1)
+    cube1 = xtgeo.Cube(
+        join(testpath, "cubes", "reek", "syntseis_20030101_seismic_depth_stack.segy")
+    )
 
     nrange = 50
 
@@ -34,7 +33,7 @@ def test_cube_export_import_many():
     for num in range(nrange):
         fname = uuid.uuid4().hex + "." + fformat
 
-        fname = pathlib.Path(TMPD) / fname
+        fname = pathlib.Path(tmpdir) / fname
         fnames.append(fname)
         cube1.to_file(fname, fformat=fformat)
 
