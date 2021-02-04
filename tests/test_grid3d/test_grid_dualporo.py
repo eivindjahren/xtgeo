@@ -1,13 +1,13 @@
 # coding: utf-8
 from __future__ import absolute_import, division, print_function
 
+import itertools
 import os
 from os.path import basename, join
 
 import numpy as np
 import pytest
 
-import tests.test_common.test_xtg as tsetup
 import xtgeo
 from xtgeo.common import XTGeoDialog
 
@@ -16,11 +16,6 @@ logger = xtg.basiclogger(__name__)
 
 if not xtg.testsetup():
     raise SystemExit
-
-
-@pytest.fixture
-def dual_poro_grid(dual_poro_path):
-    return xtgeo.grid3d.Grid(dual_poro_path + ".EGRID")
 
 
 @pytest.fixture
@@ -83,26 +78,52 @@ def dual_cases(request):
     return request.getfixturevalue(request.param)
 
 
-def test_dual_grid_dimensions(dual_cases):
+def test_dual_cases_general_grid(tmpdir, dual_cases):
     assert dual_cases.grid.dimensions == dual_cases.expected_dimensions
-
-
-def test_dual_grid_dualporo_predicate(dual_cases):
     assert dual_cases.grid.dualporo is True
-
-
-def test_dual_grid_predicates(dual_cases):
     assert dual_cases.grid.dualperm is dual_cases.expected_perm
 
-
-def test_dual_case_grid_to_file(tmpdir, dual_cases):
     dual_cases.grid.to_file(join(tmpdir, basename(dual_cases.path)) + ".roff")
-
-
-def test_dual_case_actnum_to_file(tmpdir, dual_cases):
     dual_cases.grid._dualactnum.to_file(
         join(tmpdir, basename(dual_cases.path) + "dualact.roff")
     )
+
+
+@pytest.mark.parametrize(
+    "date, name, fracture",
+    itertools.product([20170121, 20170131], ["SGAS", "SOIL", "SWAT"], [True, False]),
+)
+def test_dual_cases_restart_property_to_file(tmpdir, dual_cases, date, name, fracture):
+    prop = dual_cases.get_property_from_restart(name, date=date, fracture=fracture)
+    prop.describe()
+
+    if fracture:
+        assert prop.name == f"{name}F_{date}"
+    else:
+        assert prop.name == f"{name}M_{date}"
+
+    filename = join(tmpdir, basename(dual_cases.path) + str(date) + prop.name + ".roff")
+    prop.to_file(filename)
+
+    assert os.path.exists(filename)
+
+
+@pytest.mark.parametrize(
+    "name, fracture",
+    itertools.product(["PORO", "PERMX", "PERMY", "PERMZ"], [True, False]),
+)
+def test_dual_cases_init_property_to_file(tmpdir, dual_cases, name, fracture):
+    prop = dual_cases.get_property_from_init(name, fracture=fracture)
+    prop.describe()
+
+    if fracture:
+        assert prop.name == f"{name}F"
+    else:
+        assert prop.name == f"{name}M"
+
+    filename = join(tmpdir, basename(dual_cases.path) + prop.name + ".roff")
+    prop.to_file(filename)
+    assert os.path.exists(filename)
 
 
 def test_dual_grid_poro_property(tmpdir, dual_cases):
@@ -112,10 +133,6 @@ def test_dual_grid_poro_property(tmpdir, dual_cases):
     assert poro.values[1, 1, 0] == pytest.approx(0.16)
     assert poro.values[4, 2, 0] == pytest.approx(0.24)
 
-    assert poro.name == "POROM"
-
-    poro.describe()
-
 
 def test_dual_grid_fractured_poro_property(tmpdir, dual_cases):
     poro = dual_cases.get_property_from_init("PORO", fracture=True)
@@ -123,30 +140,10 @@ def test_dual_grid_fractured_poro_property(tmpdir, dual_cases):
     assert poro.values[0, 0, 0] == pytest.approx(0.25)
     assert poro.values[4, 2, 0] == pytest.approx(0.39)
 
-    assert poro.name == "POROF"
-
-    poro.describe()
-
 
 def test_dualperm_fractured_poro_values(dual_poro_dual_perm_case):
     poro = dual_poro_dual_perm_case.get_property_from_init(name="PORO", fracture=True)
     assert poro.values[3, 0, 0] == pytest.approx(0.0)
-
-
-@pytest.mark.parametrize("date", [20170121, 20170131])
-def test_dual_grid_swat_property(tmpdir, dual_cases, date):
-    swat = dual_cases.get_property_from_restart("SWAT", date=date)
-    swat.describe()
-    assert swat.name == f"SWATM_{date}"
-    swat.to_file(join(tmpdir, basename(dual_cases.path) + str(date) + "swatm.roff"))
-
-
-@pytest.mark.parametrize("date", [20170121, 20170131])
-def test_dual_grid_fractured_swat_property(tmpdir, dual_cases, date):
-    swat = dual_cases.get_property_from_restart("SWAT", date=date, fracture=True)
-    swat.describe()
-    assert swat.name == f"SWATF_{date}"
-    swat.to_file(join(tmpdir, basename(dual_cases.path) + str(date) + "swatf.roff"))
 
 
 def test_dual_case_swat_values(dual_poro_case):
@@ -197,10 +194,6 @@ def test_dual_case_perm_property(tmpdir, dual_cases):
     assert perm.values[0, 1, 0] == pytest.approx(0.0)
     assert perm.values[4, 2, 0] == pytest.approx(100)
 
-    perm.describe()
-    assert perm.name == "PERMXM"
-    perm.to_file(os.path.join(tmpdir, basename(dual_cases.path) + "permxm.roff"))
-
 
 def test_dual_case_fractured_perm_property(tmpdir, dual_cases):
     perm = dual_cases.get_property_from_init("PERMX", fracture=True)
@@ -209,34 +202,10 @@ def test_dual_case_fractured_perm_property(tmpdir, dual_cases):
     assert perm.values[0, 1, 0] == pytest.approx(100.0)
     assert perm.values[4, 2, 0] == pytest.approx(100)
 
-    perm.describe()
-    assert perm.name == "PERMXF"
-    perm.to_file(os.path.join(tmpdir, basename(dual_cases.path) + "permxf.roff"))
-
 
 def test_dualperm_perm_property(dual_poro_dual_perm_case):
     perm = dual_poro_dual_perm_case.get_property_from_init("PERMX", fracture=True)
     assert perm.values[3, 0, 0] == pytest.approx(0.0)
-
-
-@pytest.mark.parametrize("date", [20170121, 20170131])
-def test_dual_cases_soil_property(tmpdir, dual_cases, date):
-    soil = dual_cases.get_property_from_restart("SOIL", date=date)
-    soil.describe()
-    assert soil.name == f"SOILM_{date}"
-    soil.to_file(
-        os.path.join(tmpdir, basename(dual_cases.path) + str(date) + "soilxm.roff")
-    )
-
-
-@pytest.mark.parametrize("date", [20170121, 20170131])
-def test_dual_cases_fractured_soil_property(tmpdir, dual_cases, date):
-    soil = dual_cases.get_property_from_restart("SOIL", date=date, fracture=True)
-    soil.describe()
-    assert soil.name == f"SOILF_{date}"
-    soil.to_file(
-        os.path.join(tmpdir, basename(dual_cases.path) + str(date) + "soilxf.roff")
-    )
 
 
 def test_dualperm_soil_property(dual_poro_dual_perm_case):
@@ -269,26 +238,6 @@ def test_dualpermwg_fractured_soil_property(dual_poro_dual_perm_wg_case):
     )
     assert soil.values[3, 0, 0] == pytest.approx(0.0)
     assert soil.values[0, 1, 0] == pytest.approx(0.0)
-
-
-@pytest.mark.parametrize("date", [20170121, 20170131])
-def test_dual_cases_sgas_property(tmpdir, dual_cases, date):
-    sgas = dual_cases.get_property_from_restart("SGAS", date=date)
-    sgas.describe()
-    assert sgas.name == f"SGASM_{date}"
-    sgas.to_file(
-        os.path.join(tmpdir, basename(dual_cases.path) + str(date) + "sgasxm.roff")
-    )
-
-
-@pytest.mark.parametrize("date", [20170121, 20170131])
-def test_dual_cases_fractured_sgas_property(tmpdir, dual_cases, date):
-    sgas = dual_cases.get_property_from_restart("SGAS", date=date, fracture=True)
-    sgas.describe()
-    assert sgas.name == f"SGASF_{date}"
-    sgas.to_file(
-        os.path.join(tmpdir, basename(dual_cases.path) + str(date) + "sgasxf.roff")
-    )
 
 
 def test_dualperm_sgas_property(dual_poro_dual_perm_case):
