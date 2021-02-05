@@ -1,5 +1,7 @@
 # coding: utf-8
 # Setup common stuff for pytests...
+import os.environ
+
 import pytest
 
 from tests.fixtures import *
@@ -21,9 +23,21 @@ def assert_almostequal(this, that, tol, txt=""):
 
 
 def pytest_addoption(parser):
-    parser.addoption("--testdatapath", action="store", default="../xtgeo-testdata")
+    parser.addoption(
+        "--testdatapath",
+        help="path to xtgeo-testdata, defaults to ../xtgeo-testdata"
+        "and is overriden by the XTG_TESTPATH environment variable."
+        "Experimental feature, not all tests obey this option.",
+        action="store",
+        default="../xtgeo-testdata",
+    )
 
 
 @pytest.fixture()
 def testpath(request):
-    return request.config.getoption("--testdatapath")
+    testdatapath = request.config.getoption("--testddatapath")
+    environ_path = os.environ.get("XTG_TESTPATH", None)
+    if environ_path:
+        testdatapath = environ_path
+
+    return testdatapath
