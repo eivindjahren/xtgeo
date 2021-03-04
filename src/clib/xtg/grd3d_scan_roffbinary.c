@@ -52,6 +52,406 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
+
+typedef enum {
+    tag,
+    endtag,
+    roff_bin,
+    tag_name,
+    record_type_int,
+    record_type_float,
+    record_type_bool,
+    record_type_byte,
+    record_type_char,
+    record_type_double,
+    record_type_array,
+    record_name,
+    record_data,
+    data_length,
+    eof,
+    unknown
+} token_type;
+
+typedef enum {
+    no_error = 0,
+    unexpected_token,
+    end_of_stream
+} token_error;
+
+typedef struct token {
+    token_type type;
+    long start;
+    void * value;
+    token_error error;
+} token;
+
+void token_free(token * t){
+    free(t->value);
+}
+
+typedef struct token_list {
+    token * tokens;
+    size_t length;
+    size_t capacity;
+} token_list;
+
+
+token_list * token_list_init(int cap) {
+    token_list * result = malloc(sizeof(token_list));
+    result->length = 0;
+    result->capacity = cap;
+    result->tokens = malloc(sizeof(token) * result->capacity);
+    return result;
+}
+
+void token_list_append(token_list * tl, token * t) {
+    if(tl->length >= tl->capacity) {
+        tl->capacity += tl->capacity + 1;
+        tl->tokens = realloc(tl->tokens, tl->capacity);
+    }
+    tl->tokens[tl->length++] = *t;
+}
+
+void token_list_reset(token_list * tl) {
+    for(int i = 0; i < tl->length;i++){
+        token_free(&(tl->tokens[i]));
+    }
+    tl->length = 0;
+}
+
+token * token_list_last(token_list * tl) {
+    return tl->tokens + tl->length;
+}
+
+void token_list_free(token_list * tl) {
+    for(int i = 0; i < tl->length;i++){
+        token_free(&(tl->tokens[i]));
+    }
+    free(tl->tokens);
+}
+
+bool token_is_error(token t) {
+    return t.error != no_error;
+}
+
+int take_character_token(FILE * f, long start, token_list * token_buffer) {
+    size_t cap = 30;
+    char * char_buffer = malloc(sizeof(char) * cap);
+    int num_read = 0;
+    token result = {
+        unknown,
+        start,
+        char_buffer,
+        end_of_stream
+    };
+
+    while(fread(char_buffer + num_read, sizeof(char), 1, f) == 1){
+        if(char_buffer[num_read] == '\0'){
+            result.error = no_error;
+            token_list_append(token_buffer, &result);
+            return num_read;
+        }
+        num_read++;
+        if(num_read >= cap) {
+            cap += cap + 1;
+            char_buffer = realloc(char_buffer, sizeof(char) * cap);
+        }
+    }
+
+    token_list_append(token_buffer, &result);
+    return num_read;
+}
+
+/**
+ * takes the roff-bin token from the start of roff_file and puts
+ * it into the token buffer. Returns the number of bytes read.
+ * start parameter is the number of characters read from roff_file
+ * so far.
+ *
+ * Any other token results in an error token.
+ */
+int take_roff_header_token(FILE * roff_file, long start, token_list * token_buffer) {
+    char *  char_buffer = malloc(sizeof(char) * 9);
+    int num_read = fread(char_buffer, 1, 9, roff_file);
+    token result = {
+        unknown,
+        start,
+        char_buffer,
+        end_of_stream
+    };
+
+    if (num_read != 9) {
+        token_list_append(token_buffer, &result);
+        char_buffer[num_read] = '\0';
+        return num_read;
+    }
+    if (char_buffer[8] != '\0' || strcmp(char_buffer, "roff-bin")) {
+        result.error = unexpected_token;
+        token_list_append(token_buffer, &result);
+        char_buffer[num_read] = '\0';
+        return num_read;
+    }
+
+    result.type = roff_bin;
+    result.error = no_error;
+
+    token_list_append(token_buffer, &result);
+    return num_read;
+}
+
+/**
+ * takes the tag token from the roff_file and puts
+ * it into the token buffer. Returns the number of bytes read.
+ * start parameter is the number of characters read from roff_file
+ * so far.
+ *
+ * Any other token results in an error token.
+ */
+int take_tag_token(FILE * roff_file, long start, token_list * token_buffer) {
+    char *  char_buffer = malloc(sizeof(char) * 4);
+    int num_read = fread(char_buffer, 1, 4, roff_file);
+    token result = {
+        unknown,
+        start,
+        char_buffer,
+        end_of_stream
+    };
+
+    if (num_read != 4) {
+        char_buffer[num_read] = '\0';
+        token_list_append(token_buffer, &result);
+        return num_read;
+    }
+    if (char_buffer[3] != '\0' || strcmp(char_buffer, "tag")) {
+        result.error = unexpected_token;
+        char_buffer[num_read] = '\0';
+        token_list_append(token_buffer, &result);
+        return num_read;
+    }
+
+    result.type = tag;
+    result.error = no_error;
+
+    token_list_append(token_buffer, &result);
+    return num_read;
+}
+
+token_type get_type_token(char * token_str){
+    if(!strcmp(token_str, "int")){
+        return record_type_int;
+    } else if(!strcmp(token_str, "float")){
+        return record_type_float;
+    } else if(!strcmp(token_str, "array")){
+        return record_type_array;
+    } else if(!strcmp(token_str, "bool")){
+        return record_type_bool;
+    } else if(!strcmp(token_str, "byte")){
+        return record_type_byte;
+    } else if(!strcmp(token_str, "char")){
+        return record_type_char;
+    } else if(!strcmp(token_str, "double")){
+        return record_type_double;
+    }
+    return unknown;
+}
+
+int tokenize_single_record(FILE * roff_file, long start, token_list * token_buffer, size_t size, bool * is_swap) {
+    int read = 0;
+    char * name = token_list_last(token_buffer)->value;
+    void * value = malloc(size);
+    token result = {
+        record_data,
+        start,
+        value,
+        end_of_stream
+    };
+
+    read += fread(&value, size, 1, roff_file);
+    if(read != 1){
+        result.error = no_error;
+    }
+
+    token_list_append(token_buffer, &result);
+
+    if(!strcpy(name, "byteswaptest") && *((int*)result.value)){
+        *is_swap = true;
+    }
+    return size * read;
+}
+
+
+int tokenize_char_record(FILE * roff_file, long start, token_list * token_buffer) {
+    int num_read = take_character_token(roff_file, start, token_buffer);
+    token_list_last(token_buffer)->type = record_data;
+    return num_read;
+}
+
+int take_array_len_token(FILE * roff_file, long start, token_list * token_buffer, bool * is_swap){
+    int * value = malloc(sizeof(int));
+    token array_len_token = {
+        data_length,
+        start,
+        value,
+        end_of_stream
+    };
+
+    int read = fread(&value, sizeof(int), 1, roff_file);
+
+    if(read != 1){
+        token_list_append(token_buffer, &array_len_token);
+        return read;
+    }
+
+    array_len_token.type = data_length;
+    if(*is_swap){
+        SWAP_INT(array_len_token.value);
+    }
+    token_list_append(token_buffer, &array_len_token);
+
+    return read * sizeof(int);
+}
+
+int take_array_data(FILE * roff_file, long start, token_list * token_buffer, int length) {
+    int array_len = *((int*)token_list_last(token_buffer)->value);
+
+    token array_data_token = {
+        record_data,
+        start,
+        NULL,
+        end_of_stream
+    };
+    if (fseek(roff_file, array_len, SEEK_CUR) != 0){
+        return 0;
+
+    }
+    return array_len;
+}
+
+int tokenize_array_record(FILE * roff_file, long start, token_list * token_buffer, bool * is_swap) {
+    int num_read = take_array_len_token(roff_file, start, token_buffer, is_swap);
+
+    if(token_list_last(token_buffer)->error != no_error){
+        return num_read;
+    }
+
+    return num_read + take_array_data_token(roff_file, start, token_buffer);
+}
+
+/**
+ * Assumes the last token read was a record type token and tokenizes the
+ * remaining record.
+ */
+int tokenize_record(FILE * roff_file, long start, token_list * token_buffer, bool * is_swap) {
+    token_type last_type = token_list_last(token_buffer)->type;
+
+    int num_read = take_character_token(roff_file, start, token_buffer);
+    token_list_last(token_buffer)->type = record_name;
+
+    if(token_list_last(token_buffer)->error != no_error){
+        return num_read;
+    }
+
+    start += num_read;
+    switch(last_type) {
+        case record_type_array:
+            return num_read + tokenize_array_record(roff_file, start, token_buffer, is_swap);
+        case record_type_char:
+            return num_read + tokenize_char_record(roff_file, start, token_buffer);
+        case record_type_int:
+            return num_read + tokenize_single_record(roff_file, start, token_buffer, sizeof(int), is_swap);
+        case record_type_float:
+            return num_read + tokenize_single_record(roff_file, start, token_buffer, sizeof(float), is_swap);
+        case record_type_byte:
+            return num_read + tokenize_single_record(roff_file, start, token_buffer, sizeof(unsigned char), is_swap);
+        case record_type_double:
+            return num_read + tokenize_single_record(roff_file, start, token_buffer, sizeof(double), is_swap);
+        case record_type_bool:
+            return num_read + tokenize_single_record(roff_file, start, token_buffer, sizeof(unsigned char), is_swap);
+        default:
+            logger_critical(LI, FI, FU, "Unexpected state reached in roff tokenization");
+            return 0;
+    }
+}
+
+int take_endtag_token_or_record(FILE * roff_file, long start, token_list * token_buffer, bool * is_swap) {
+    char * char_buffer = malloc(sizeof(char) * 7);
+    char * last_char = char_buffer;
+    int total_read = 0;
+    token result = {
+        unknown,
+        start,
+        char_buffer,
+        end_of_stream
+    };
+    do {
+        char * read_char = char_buffer + total_read;
+        int num_read = fread(read_char, 1, 1, roff_file);
+        if (num_read != 1) {
+            result.end = start + total_read;
+            char_buffer[total_read] = '\0';
+            token_list_append(token_buffer, &result);
+            return num_read;
+        }
+        total_read++;
+    } while(total_read < 7 && *last_char != '\0');
+
+    result.error = unexpected_token;
+
+    if(total_read == 7 && *last_char != '\0') {
+        result.error = unexpected_token;
+        char_buffer[6] = '\0';
+        token_list_append(token_buffer, &result);
+        return total_read;
+    }
+
+
+    if(!strcmp(char_buffer, "endtag")){
+        // is it endtag token?
+        result.error = no_error;
+        result.type = endtag;
+        token_list_append(token_buffer, &result);
+    } else {
+        // is it record type token?
+        token_type record_type = get_type_token(char_buffer);
+        if(record_type != unknown){
+            result.error = no_error;
+            result.type = record_type;
+            token_list_append(token_buffer, &result);
+            total_read += tokenize_record(roff_file, start+total_read, token_buffer, is_swap);
+        }
+        // else defaults to unexpected token
+    }
+
+    return total_read;
+}
+
+int tokenize_tag(FILE * roff_file, long start, token_list * token_buffer) {
+    int current = start;
+    bool is_swap = false;
+
+    current += take_tag_token(roff_file, current, token_buffer);
+    if(token_list_last(token_buffer)->error != no_error){
+        return current - start;
+    }
+
+    current += take_character_token(roff_file, current, token_buffer);
+    if(token_list_last(token_buffer)->error != no_error){
+        return current - start;
+    }
+    token_list_last(token_buffer)->type = tag_name;
+
+    while(token_list_last(token_buffer)->type != endtag){
+        current += take_endtag_token_or_record(roff_file, start, token_buffer, &is_swap);
+        if(token_list_last(token_buffer)->error != no_error){
+            return current - start;
+        }
+    }
+
+    return current - start;
+}
+
+
 
 /* ######################################################################### */
 /* LOCAL FUNCTIONS                                                           */
