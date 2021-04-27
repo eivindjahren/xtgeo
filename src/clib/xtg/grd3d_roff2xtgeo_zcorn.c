@@ -31,6 +31,37 @@
 #include "libxtg.h"
 #include "libxtg_.h"
 #include "logger.h"
+int
+grd3d_roff2xtgeo_zcorn_np_arrs(int nx,
+                       int ny,
+                       int nz,
+                       float xoffset,
+                       float yoffset,
+                       float zoffset,
+                       float xscale,
+                       float yscale,
+                       float zscale,
+                       int *p_splitenz_v,
+                       long n_splitenz,
+                       float *p_zdata_v,
+                       long n_zdata,
+                       double *zcornsv,
+                       long nzcorn)
+{
+    return grd3d_roff2xtgeo_zcorn( nx,
+                        ny,
+                        nz,
+                       xoffset,
+                       yoffset,
+                       zoffset,
+                       xscale,
+                       yscale,
+                       zscale,
+                       p_splitenz_v,
+                       p_zdata_v,
+                       zcornsv,
+                       nzcorn);
+}
 
 int
 grd3d_roff2xtgeo_zcorn(int nx,

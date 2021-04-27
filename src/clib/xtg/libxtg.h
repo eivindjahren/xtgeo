@@ -1345,6 +1345,23 @@ grd3d_roff2xtgeo_coord(int nx,
                        double *swig_np_dbl_inplace_v1,  // *coordsv,
                        long n_swig_np_dbl_inplace_v1    // ncoord
 );
+int
+grd3d_roff2xtgeo_zcorn_np_arrs(int nx,
+                       int ny,
+                       int nz,
+                       float xoffset,
+                       float yoffset,
+                       float zoffset,
+                       float xscale,
+                       float yscale,
+                       float zscale,
+                       int *swig_np_int_inplace_v1, // *splitenz
+                       long n_swig_np_int_inplace_v1,    // nzvals
+                       float *swig_np_flt_inplace_v1,    // *zvals
+                       long n_swig_np_flt_inplace_v1,    // nzvals
+                       double *swig_np_dbl_inplace_v2,  // *zcornsv,
+                       long n_swig_np_dbl_inplace_v2   // nzcorn
+);
 
 int
 grd3d_roff2xtgeo_zcorn(int nx,
