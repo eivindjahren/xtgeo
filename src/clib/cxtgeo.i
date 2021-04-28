@@ -161,6 +161,10 @@ import_array();
 
 // ==INPLACE 1D=========================================================================
 
+// INPLACE char no 1
+%apply (chr* INPLACE_ARRAY1, long DIM1) {(char *swig_np_chr_inplace_v1,
+                                         long n_swig_np_chr_inplace_v1)};
+
 // INPLACE int no 1
 %apply (int* INPLACE_ARRAY1, long DIM1) {(int *swig_np_int_inplace_v1,
                                           long n_swig_np_int_inplace_v1)};
@@ -172,6 +176,10 @@ import_array();
 // INPLACE float no 1
 %apply (float* INPLACE_ARRAY1, long DIM1) {(float *swig_np_flt_inplace_v1,
                                             long n_swig_np_flt_inplace_v1)};
+
+// INPLACE float no 2
+%apply (float* INPLACE_ARRAY1, long DIM1) {(float *swig_np_flt_inplace_v2,
+                                            long n_swig_np_flt_inplace_v2)};
 
 // INPLACE float64 / double no 1
 %apply (double* INPLACE_ARRAY1, long DIM1) {(double *swig_np_dbl_inplace_v1,

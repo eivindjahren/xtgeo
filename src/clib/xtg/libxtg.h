@@ -1332,6 +1332,19 @@ grd3d_read_eclrecord(FILE *fc,
                      long n_swig_np_dbl_inplace_v1);
 
 int
+grd3d_roff2xtgeo_splitenz(
+                       int nz,
+                       float zoffset,
+                       float zscale,
+                       char *swig_bytes, // *splitenz
+                       long swig_bytes_len, // nsplitenz
+                       float *swig_np_flt_inplace_v1,    // *zdata
+                       long n_swig_np_flt_inplace_v1,    // nzdata
+                       float *swig_np_flt_inplace_v2,  // *zcornsv
+                       long n_swig_np_flt_inplace_v2    // nzcorn
+                       );
+
+int
 grd3d_roff2xtgeo_coord(int nx,
                        int ny,
                        int nz,
@@ -1344,23 +1357,6 @@ grd3d_roff2xtgeo_coord(int nx,
                        float *p_cornerlines_v,
                        double *swig_np_dbl_inplace_v1,  // *coordsv,
                        long n_swig_np_dbl_inplace_v1    // ncoord
-);
-int
-grd3d_roff2xtgeo_zcorn_np_arrs(int nx,
-                       int ny,
-                       int nz,
-                       float xoffset,
-                       float yoffset,
-                       float zoffset,
-                       float xscale,
-                       float yscale,
-                       float zscale,
-                       int *swig_np_int_inplace_v1, // *splitenz
-                       long n_swig_np_int_inplace_v1,    // nzvals
-                       float *swig_np_flt_inplace_v1,    // *zvals
-                       long n_swig_np_flt_inplace_v1,    // nzvals
-                       double *swig_np_dbl_inplace_v2,  // *zcornsv,
-                       long n_swig_np_dbl_inplace_v2   // nzcorn
 );
 
 int

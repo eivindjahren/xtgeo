@@ -24,7 +24,7 @@ class RoffGrid:
     nz: int
     subgrids: Optional[np.ndarray]
     corner_lines: np.ndarray
-    split_enz: Optional[np.ndarray]
+    split_enz: Optional[bytes]
     zvals: np.ndarray
     active: np.ndarray
 
@@ -181,23 +181,44 @@ class RoffGrid:
         return actnum
 
     def xtgeo_zcorn(self):
-        zcornsv = np.zeros((self.nx + 1) * (self.ny + 1) * (self.nz + 1) * 4)
-        split_enz = np.array(self.split_enz, dtype=np.int32)
-        _cxtgeo.grd3d_roff2xtgeo_zcorn_np_arrs(
-            int(self.nx),
-            int(self.ny),
-            int(self.nz),
-            float(self.xoffset),
-            float(self.yoffset),
+        zcornsv = np.zeros(
+            (self.nx + 1) * (self.ny + 1) * (self.nz + 1) * 4, dtype=np.float32
+        )
+        note(
+            f"""{
+            repr(self.nz),
+            repr(self.zoffset),
+            repr(self.zscale),
+            repr(self.split_enz),
+            repr(self.zvals),
+            repr(zcornsv),
+            }"""
+        )
+        retval = _cxtgeo.grd3d_roff2xtgeo_splitenz(
+            int(self.nz + 1),
             float(self.zoffset),
-            float(self.xscale),
-            float(self.yscale),
             float(self.zscale),
-            split_enz,
+            self.split_enz,
             self.zvals,
             zcornsv,
         )
-        return zcornsv.reshape((self.nx + 1, self.ny + 1, self.nz + 1, 4))
+        if retval == 0:
+            _cxtgeo.grdcp3d_process_edges(
+                int(self.nx), int(self.ny), int(self.nz), zcornsv
+            )
+            return zcornsv.reshape((self.nx + 1, self.ny + 1, self.nz + 1, 4))
+        elif retval == -1:
+            raise ValueError("Unsupported split type in split_enz")
+        elif retval == -2:
+            raise ValueError("Incorrect size of splitenz")
+        elif retval == -3:
+            raise ValueError("Incorrect size of zdata")
+        elif retval == -4:
+            raise ValueError(
+                f"Incorrect size of zcorn, found {zcornsv.shape} should be multiple of {4 * self.nz}"
+            )
+        else:
+            raise ValueError(f"Unknown error {retval} occurred")
 
     def is_active(self, node):
         i, j, k = node
@@ -273,14 +294,6 @@ class RoffGrid:
                 f"File {filelike} did not have filetype set to grid, found {filetype}"
             )
 
-        if found["zvalues"]["splitEnz"] is not None:
-            val = found["zvalues"]["splitEnz"]
-            found["zvalues"]["splitEnz"] = np.ndarray(
-                len(val),
-                np.uint8,
-                val,
-            )
-
         return RoffGrid(
             **{
                 translated: found[tag][key]
@@ -318,7 +331,7 @@ def roff_grids(draw, dim=dimensions):
         #    st.just(None),
         arrays(shape=size, dtype=np.int8, elements=st.sampled_from([1, 4])),
         # )
-    )
+    ).tobytes()
     if split_enz is not None:
         numz = sum(split_enz)
     else:
@@ -433,5 +446,4 @@ def test_roff_grid_write_with_xtgeo(tmp_path, caplog, xtggrid):
 
     assert_allclose(read_grid.xtgeo_coord(), xtggrid._coordsv, atol=0.001)
     assert_allclose(read_grid.xtgeo_zcorn(), xtggrid._zcornsv, atol=0.001)
-    assert np.array_equal(read_grid.xtgeo_actnum(), xtggrid._actnumsv)
     assert np.array_equal(read_grid.xtgeo_actnum(), xtggrid._actnumsv)
