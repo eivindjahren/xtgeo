@@ -34,7 +34,9 @@ def _rkwquery(gfile, kws, name, swap):
         raise ValueError("Cannot find property <{}> in file".format(name))
 
     if reclen != 1:
-        raise SystemError("Stuff is rotten here...")
+        raise SystemError(
+            f"Expected record length of 1, got {reclen} for {name} in {gfile}"
+        )
 
     _cxtgeo.grd3d_imp_roffbin_data(
         gfile.get_cfhandle(), swap, dtype, bytepos, iresult, presult
@@ -90,8 +92,10 @@ def _rarraykwquery(gfile, kws, name, swap, ncol, nrow, nlay):
     if dtype == 0:
         raise ValueError("Cannot find property <{}> in file".format(name))
 
-    if reclen <= 1:
-        raise SystemError("Stuff is rotten here...")
+    if reclen < 1:
+        raise SystemError(
+            f"Expected record length of 1, got {reclen} for {name} in {gfile}"
+        )
 
     inumpy = np.zeros(ncol * nrow * nlay, dtype=np.int32)
     fnumpy = np.zeros(ncol * nrow * nlay, dtype=np.float32)
@@ -181,8 +185,10 @@ def _rkwxvec(gfile, kws, name, swap, strict=True):
 
         return None
 
-    if reclen <= 1:
-        raise SystemError("Stuff is rotten here...")
+    if reclen < 1:
+        raise SystemError(
+            f"Expected record length of at least 2, got {reclen} for {name} in {gfile}"
+        )
 
     xvec = None
     cfhandle = gfile.get_cfhandle()
@@ -236,7 +242,7 @@ def _rkwxvec_prop(self, gfile, kws, name, swap, strict=True):
 
         return None
 
-    if reclen <= 1:
+    if reclen < 1:
         raise SystemError("Stuff is rotten here...")
 
     proparr = None
@@ -262,117 +268,3 @@ def _rkwxvec_prop(self, gfile, kws, name, swap, strict=True):
 
     gfile.cfclose()
     return proparr
-
-
-def _rkwxvec_coordsv(
-    self,
-    gfile,
-    kws,
-    swap,
-    xoffset,
-    yoffset,
-    zoffset,
-    xscale,
-    yscale,
-    zscale,
-):
-    """Special for importing ROFF binary for COORD type data when _xtgversion=2."""
-    name = "cornerLines!data"
-
-    kwtypedict = {"int": 1, "float": 2, "double": 3, "char": 4, "bool": 5, "byte": 6}
-
-    dtype = 0
-    bytepos = 1
-    for items in kws:
-        if name in items[0]:
-            dtype = kwtypedict.get(items[1])
-            bytepos = items[3]
-            break
-
-    if dtype == 0:
-        raise ValueError("COORD not present")
-
-    cfhandle = gfile.get_cfhandle()
-    logger.info("Reading %s from file...", name)
-
-    status = _cxtgeo.grdcp3d_imp_roffbin_coordsv(
-        cfhandle,
-        swap,
-        bytepos,
-        self._ncol + 1,
-        self._nrow + 1,
-        xoffset,
-        yoffset,
-        zoffset,
-        xscale,
-        yscale,
-        zscale,
-        self._coordsv,
-    )
-
-    if status != 0:
-        gfile.cfclose()
-        raise RuntimeError("Error running _rkwxvec_coordsv")
-
-    logger.info("Reading %s from file done", name)
-
-    gfile.cfclose()
-
-
-def _rkwxvec_zcornsv(
-    self,
-    gfile,
-    kws,
-    swap,
-    xoffset,
-    yoffset,
-    zoffset,
-    xscale,
-    yscale,
-    zscale,
-    p_splitenz_v,
-):
-    """Special for importing ROFF binary for ZCORNS type data when _xtgversion=2."""
-    name = "zvalues!data"
-
-    kwtypedict = {"int": 1, "float": 2, "double": 3, "char": 4, "bool": 5, "byte": 6}
-
-    dtype = 0
-    bytepos = 1
-    for items in kws:
-        if name in items[0]:
-            dtype = kwtypedict.get(items[1])
-            bytepos = items[3]
-            break
-
-    if dtype == 0:
-        raise ValueError("COORD not present")
-
-    cfhandle = gfile.get_cfhandle()
-    logger.info("Reading %s from file...", name)
-
-    status = _cxtgeo.grdcp3d_imp_roffbin_zcornsv(
-        cfhandle,
-        swap,
-        bytepos,
-        self._ncol + 1,
-        self._nrow + 1,
-        self._nlay + 1,
-        xoffset,
-        yoffset,
-        zoffset,
-        xscale,
-        yscale,
-        zscale,
-        p_splitenz_v,
-        (self._ncol + 1) * (self._nrow + 1) * (self._nlay + 1),
-        self._zcornsv,
-    )
-
-    if status != 0:
-        gfile.cfclose()
-        raise RuntimeError("Error running _rkwxvec_coordsv")
-
-    logger.info("Reading %s from file done", name)
-
-    gfile.cfclose()
