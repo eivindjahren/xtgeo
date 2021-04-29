@@ -170,9 +170,9 @@ class RoffGrid:
         if self.subgrids is None:
             return None
         result = OrderedDict()
-        next_ind = 0
+        next_ind = 1
         for i, current in enumerate(self.subgrids):
-            result[f"subgrid_{i}"] = list(range(next_ind, current + next_ind))
+            result[f"subgrid_{i}"] = range(next_ind, current + next_ind)
             next_ind += current
         return result
 
@@ -182,11 +182,14 @@ class RoffGrid:
             return None
         subgrids = []
         for key, value in xtgeo_subgrids.items():
-            if value != list(range(value[0], value[-1] + 1)):
+            if isinstance(value, range):
+                subgrids.append(value.stop - value.start)
+            elif value != list(range(value[0], value[-1] + 1)):
                 raise ValueError(
                     "Cannot convert non-consecutive subgrids to roff format."
                 )
-            subgrids.append(value[-1] + 1 - value[0])
+            else:
+                subgrids.append(value[-1] - value[0])
         return np.array(subgrids, dtype=np.int32)
 
     @staticmethod
