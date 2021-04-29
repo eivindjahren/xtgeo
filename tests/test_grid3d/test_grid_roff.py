@@ -268,3 +268,10 @@ def test_wrong_zcornsv_size():
     zcornsv = np.zeros(5, dtype=np.float32)
     retval = _cxtgeo.grd3d_roff2xtgeo_splitenz(3, 1.0, 1.0, split_enz, zvals, zcornsv)
     assert retval == -4
+
+
+@given(roff_grids())
+def test_xtgeo_values_are_c_contiguous(roff_grid):
+    assert roff_grid.xtgeo_coord().flags["C_CONTIGUOUS"]
+    assert roff_grid.xtgeo_actnum().flags["C_CONTIGUOUS"]
+    assert roff_grid.xtgeo_zcorn().flags["C_CONTIGUOUS"]
