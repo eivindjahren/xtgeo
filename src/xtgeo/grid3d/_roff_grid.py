@@ -1,7 +1,6 @@
 import warnings
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
-from itertools import product
 from typing import Optional
 
 import numpy as np
@@ -151,9 +150,15 @@ class RoffGrid:
         elif retval == -1:
             raise ValueError("Unsupported split type in split_enz")
         elif retval == -2:
-            raise ValueError("Incorrect size of splitenz")
+            expected_size = (self.nx + 1) * (self.ny + 1) * (self.nz + 1)
+            raise ValueError(
+                f"Incorrect size of splitenz, expected {expected_size} got {len(self.split_enz)}"
+            )
         elif retval == -3:
-            raise ValueError("Incorrect size of zdata")
+            expected_size = sum(self.split_enz)
+            raise ValueError(
+                f"Incorrect size of zdata, expected {expected_size} got {len(self.zvals)}"
+            )
         elif retval == -4:
             raise ValueError(
                 f"Incorrect size of zcorn, found {zcornsv.shape} should be multiple of {4 * self.nz}"
@@ -244,6 +249,15 @@ class RoffGrid:
             "active": {"data": "active"},
             "subgrids": {"nLayers": "subgrids"},
         }
+        optional_keywords = defaultdict(
+            list,
+            {
+                "translate": ["xoffset", "yoffset", "zoffset"],
+                "scale": ["xscale", "yscale", "zscale"],
+                "subgrids": ["nLayers"],
+                "active": ["data"],
+            },
+        )
         found = {
             tag_name: {key_name: None for key_name in tag_keys.keys()}
             for tag_name, tag_keys in translate_kws.items()
@@ -252,20 +266,23 @@ class RoffGrid:
         with roffio.lazy_read(filelike) as tag_generator:
             for tag, keys in tag_generator:
                 if tag in found:
-                    for name, k_value in keys:
-                        if name in found[tag]:
-                            if found[tag][name] is not None:
+                    for key in keys:
+                        if key[0] in found[tag]:
+                            if found[tag][key[0]] is not None:
                                 raise ValueError(
-                                    f"Multiple tag, tagkey pair {tag}, {name}"
+                                    f"Multiple tag, tagkey pair {tag}, {key[0]}"
                                     " in {filelike}"
                                 )
-                            found[tag][name] = k_value
+                            found[tag][key[0]] = key[1]
+
+        for tag_name, keys in found.items():
+            for key_name, value in keys.items():
+                if value is None and key_name not in optional_keywords[tag_name]:
+                    raise ValueError(
+                        f"Missing non-optional keyword {tag_name}:{key_name}"
+                    )
 
         filetype = found["filedata"]["filetype"]
-        if filetype is None:
-            raise ValueError(
-                f"File {filelike} did not contain filetype key in filedata tag"
-            )
         if filetype != "grid":
             raise ValueError(
                 f"File {filelike} did not have filetype set to grid, found {filetype}"
@@ -278,51 +295,3 @@ class RoffGrid:
                 for key, translated in tag_keys.items()
             }
         )
-
-    def local_to_utm(self, coordinates):
-        (x, y, z) = coordinates
-        x_utm = (x + self.xoffset) * self.xscale
-        y_utm = (y + self.yoffset) * self.yscale
-        tvd = (z + self.zoffset) * self.zscale
-        return (x_utm, y_utm, tvd)
-
-    def line_vertices(self, i, j):
-        pos = 6 * (i * (self.ny + 1) + j)
-        x_bot = self.corner_lines[pos]
-        y_bot = self.corner_lines[pos + 1]
-        z_bot = self.corner_lines[pos + 2]
-        x_top = self.corner_lines[pos + 3]
-        y_top = self.corner_lines[pos + 4]
-        z_top = self.corner_lines[pos + 5]
-
-        return ((x_bot, y_bot, z_bot), (x_top, y_top, z_top))
-
-    def points(self):
-        return product(
-            range(1, self.nx - 1),
-            range(1, self.ny - 1),
-            range(1, self.nz - 1),
-        )
-
-    def layer_points(self):
-        return product(range(1, self.nx - 1), range(1, self.ny - 1))
-
-    def same_geometry(self, other):
-        if not isinstance(other, RoffGrid):
-            return False
-
-        is_same = True
-        for line in self.layer_points():
-            for v1, v2 in zip(self.line_vertices(*line), other.line_vertices(*line)):
-                is_same = is_same and np.allclose(
-                    self.local_to_utm(v1), other.local_to_utm(v2), atol=0.1
-                )
-
-        for node in self.points():
-            is_same = is_same and np.allclose(
-                (other.z_value(node) + other.zoffset) * other.zscale,
-                (self.z_value(node) + self.zoffset) * self.zscale,
-                atol=0.2,
-            )
-
-        return is_same

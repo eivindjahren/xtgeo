@@ -1,11 +1,15 @@
 import io
+from itertools import product
 
 import hypothesis.strategies as st
 import numpy as np
-from hypothesis import HealthCheck, given
+import pytest
+import roffio
+from hypothesis import given
 from hypothesis.extra.numpy import arrays
 from numpy.testing import assert_allclose
 
+import xtgeo.cxtgeo._cxtgeo as _cxtgeo
 from xtgeo.grid3d import Grid
 from xtgeo.grid3d._roff_grid import RoffGrid
 
@@ -18,6 +22,62 @@ dimensions = st.tuples(
 finites = st.floats(
     min_value=-100.0, max_value=100.0, allow_nan=False, allow_infinity=False, width=32
 )
+
+
+def local_to_utm(roff_grid, coordinates):
+    (x, y, z) = coordinates
+    x_utm = (x + roff_grid.xoffset) * roff_grid.xscale
+    y_utm = (y + roff_grid.yoffset) * roff_grid.yscale
+    tvd = (z + roff_grid.zoffset) * roff_grid.zscale
+    return (x_utm, y_utm, tvd)
+
+
+def line_vertices(roff_grid, i, j):
+    pos = 6 * (i * (roff_grid.ny + 1) + j)
+    x_bot = roff_grid.corner_lines[pos]
+    y_bot = roff_grid.corner_lines[pos + 1]
+    z_bot = roff_grid.corner_lines[pos + 2]
+    x_top = roff_grid.corner_lines[pos + 3]
+    y_top = roff_grid.corner_lines[pos + 4]
+    z_top = roff_grid.corner_lines[pos + 5]
+
+    return ((x_bot, y_bot, z_bot), (x_top, y_top, z_top))
+
+
+def points(roff_grid):
+    return product(
+        range(1, roff_grid.nx - 1),
+        range(1, roff_grid.ny - 1),
+        range(1, roff_grid.nz - 1),
+    )
+
+
+def layer_points(roff_grid):
+    return product(range(1, roff_grid.nx - 1), range(1, roff_grid.ny - 1))
+
+
+def same_geometry(roff_grid, other_roff_grid):
+    if not isinstance(other_roff_grid, RoffGrid):
+        return False
+
+    is_same = True
+    for line in layer_points(roff_grid):
+        for v1, v2 in zip(
+            line_vertices(roff_grid, *line), line_vertices(other_roff_grid, *line)
+        ):
+            is_same = is_same and np.allclose(
+                local_to_utm(roff_grid, v1), local_to_utm(other_roff_grid, v2), atol=0.1
+            )
+
+    for node in points(roff_grid):
+        is_same = is_same and np.allclose(
+            (other_roff_grid.z_value(node) + other_roff_grid.zoffset)
+            * other_roff_grid.zscale,
+            (roff_grid.z_value(node) + roff_grid.zoffset) * roff_grid.zscale,
+            atol=0.2,
+        )
+
+    return is_same
 
 
 @st.composite
@@ -131,5 +191,80 @@ def test_to_from_roffgrid(roff_grid):
     xtggrid._nlay = roff_grid.nz
 
     roffgrid2 = RoffGrid.from_xtgeo_grid(xtggrid)
-    assert roffgrid2.same_geometry(roff_grid)
+    assert same_geometry(roffgrid2, roff_grid)
     assert np.array_equal(roffgrid2.subgrids, roff_grid.subgrids)
+
+
+def test_missing_non_optionals():
+    buff = io.BytesIO()
+    roffio.write(buff, {"filedata": {"filetype": "grid"}})
+    buff.seek(0)
+    with pytest.raises(ValueError, match="Missing non-optional"):
+        RoffGrid.from_file(buff)
+
+
+@given(roff_grids())
+def test_not_a_grid(roff_grid):
+    buff = io.BytesIO()
+    roff_grid.to_file(buff)
+    buff.seek(0)
+    values = roffio.read(buff)
+    values["filedata"]["filetype"] = "notgrid"
+    buff.seek(0)
+    roffio.write(buff, values)
+    buff.seek(0)
+    with pytest.raises(ValueError, match="did not have filetype set to grid"):
+        RoffGrid.from_file(buff)
+
+
+# pylint: disable=redefined-outer-name
+@pytest.fixture
+def single_cell_roff_grid():
+    corner_lines = np.array(
+        [
+            [[0.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
+            [[1.0, 0.0, 0.0], [1.0, 0.0, 1.0]],
+            [[0.0, 1.0, 0.0], [0.0, 1.0, 1.0]],
+            [[1.0, 1.0, 0.0], [1.0, 1.0, 1.0]],
+        ],
+        dtype=np.float32,
+    ).ravel()
+    splitenz = np.ones(8, dtype=np.uint8).tobytes()
+    active = np.ones(1, dtype=bool)
+    zvals = np.ones(1 * len(splitenz), dtype=np.float32)
+    return RoffGrid(1, 1, 1, None, corner_lines, splitenz, zvals, active)
+
+
+def test_unsupported_split_enz(single_cell_roff_grid):
+    roff_grid = single_cell_roff_grid
+    roff_grid.split_enz = np.full(8, fill_value=2, dtype=np.uint8).tobytes()
+    roff_grid.zvals = np.ones(16, dtype=np.float32)
+
+    with pytest.raises(ValueError, match="split type"):
+        roff_grid.xtgeo_zcorn()
+
+
+def test_too_few_zvals(single_cell_roff_grid):
+    roff_grid = single_cell_roff_grid
+    roff_grid.split_enz = np.full(8, fill_value=4, dtype=np.uint8).tobytes()
+    roff_grid.zvals = np.ones(5, dtype=np.float32)
+
+    with pytest.raises(ValueError, match="size of zdata"):
+        roff_grid.xtgeo_zcorn()
+
+
+def test_too_many_zvals(single_cell_roff_grid):
+    roff_grid = single_cell_roff_grid
+    roff_grid.split_enz = np.full(8, fill_value=4, dtype=np.uint8).tobytes()
+    roff_grid.zvals = np.ones(300, dtype=np.float32)
+
+    with pytest.raises(ValueError, match="size of zdata"):
+        roff_grid.xtgeo_zcorn()
+
+
+def test_wrong_zcornsv_size():
+    split_enz = np.full(8, fill_value=4, dtype=np.uint8).tobytes()
+    zvals = np.ones(300, dtype=np.float32)
+    zcornsv = np.zeros(5, dtype=np.float32)
+    retval = _cxtgeo.grd3d_roff2xtgeo_splitenz(3, 1.0, 1.0, split_enz, zvals, zcornsv)
+    assert retval == -4
