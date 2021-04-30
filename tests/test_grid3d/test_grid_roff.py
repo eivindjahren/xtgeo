@@ -126,7 +126,7 @@ def roff_grids(draw, dim=dimensions):
     subs = draw(subgrids(dims[2]))
 
     rest = draw(st.tuples(*([finites] * 6)))
-    return RoffGrid(*dims, subs, corner_lines, split_enz, zvals, active, *rest)
+    return RoffGrid(*dims, corner_lines, zvals, split_enz, active, subs, *rest)
 
 
 def create_xtgeo_grid(*args, **kwargs):
@@ -232,7 +232,7 @@ def single_cell_roff_grid():
     splitenz = np.ones(8, dtype=np.uint8).tobytes()
     active = np.ones(1, dtype=bool)
     zvals = np.ones(1 * len(splitenz), dtype=np.float32)
-    return RoffGrid(1, 1, 1, None, corner_lines, splitenz, zvals, active)
+    return RoffGrid(1, 1, 1, corner_lines, zvals, splitenz, active)
 
 
 def test_unsupported_split_enz(single_cell_roff_grid):
@@ -275,3 +275,37 @@ def test_xtgeo_values_are_c_contiguous(roff_grid):
     assert roff_grid.xtgeo_coord().flags["C_CONTIGUOUS"]
     assert roff_grid.xtgeo_actnum().flags["C_CONTIGUOUS"]
     assert roff_grid.xtgeo_zcorn().flags["C_CONTIGUOUS"]
+
+
+@given(roff_grids())
+def test_default_values(roff_grid):
+    buff = io.BytesIO()
+    roff_grid.to_file(buff)
+    buff.seek(0)
+    values = roffio.read(buff)
+
+    del values["translate"]
+    del values["scale"]
+    if "subgrids" in values:
+        del values["subgrids"]
+    del values["active"]
+
+    buff2 = io.BytesIO()
+    roffio.write(buff2, values)
+    buff2.seek(0)
+    roff_grid2 = RoffGrid.from_file(buff2)
+
+    assert roff_grid2.xoffset == 0.0
+    assert roff_grid2.yoffset == 0.0
+    assert roff_grid2.zoffset == 0.0
+
+    assert roff_grid2.xscale == 1.0
+    assert roff_grid2.yscale == 1.0
+    assert roff_grid2.zscale == -1.0
+
+    assert roff_grid2.subgrids is None
+
+    assert np.array_equal(
+        roff_grid2.active,
+        np.ones(roff_grid.nx * roff_grid.ny * roff_grid.nz, dtype=np.bool_),
+    )
