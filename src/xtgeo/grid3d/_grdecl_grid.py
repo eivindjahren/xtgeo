@@ -304,25 +304,94 @@ class GrdeclGrid:
     def xtgeo_actnum(self):
         self._check_xtgeo_compatible()
         if self.actnum is None:
-            return np.ones(self.dimensions)
+            return np.ones(shape=self.dimensions, dtype=np.int32)
         return self.actnum.reshape(self.dimensions)
 
     def xtgeo_zcorn(self):
         self._check_xtgeo_compatible()
         nx, ny, nz = self.dimensions
-        zcorn_xtgeo = self.zcorn.reshape((nx, 2, ny, 2, nz, 2))
+        zcorn = self.zcorn.reshape((nz, 2, 2, ny, 2, nx))
+        for i in range(3, 6):
+            zcorn = np.swapaxes(zcorn, i, 5 - i)
+
         if not np.allclose(
-            zcorn_xtgeo[1:nx, 0, 1:ny, :, 1:nz, :],
-            zcorn_xtgeo[1:nx, 1, 1:ny, :, 1:nz, :],
+            zcorn[:, :, :, :, 0, : nz - 1],
+            zcorn[:, :, :, :, 1, 1:],
         ):
             raise ValueError("xtgeo does not support grids with horizontal split")
         result = np.zeros((nx + 1, ny + 1, nz + 1, 4), dtype=np.float32)
-        result[:nx, :ny, :nz, 0] = zcorn_xtgeo[:, 0, :, 0, :, 0]
-        result[:nx, :ny, :nz, 1] = zcorn_xtgeo[:, 0, :, 1, :, 0]
-        result[:nx, :ny, :nz, 2] = zcorn_xtgeo[:, 0, :, 0, :, 1]
-        result[:nx, :ny, :nz, 3] = zcorn_xtgeo[:, 0, :, 1, :, 1]
-        result[nx, ny, nz, :] = zcorn_xtgeo[nx - 1, 1, ny - 1, :, nz - 1, :].ravel()
-        return result
+
+        # xtgeo uses 4 z values per i,j,k to mean the 4 z values of
+        # adjacent cells for the cornerline at position i,j,k assuming
+        # no difference in z values between upper and lower cells. In
+        # the order nw,ne,sw,se.
+
+        # In grdecl, there are 8 zvalues per i,j,k meaning the z values
+        # of each corner for the cell at i,j,k. In
+        # the order "left" before "right" (2nd dimension), "near" before
+        # "far" (4th dimension), "upper" before "bottom" (5th dimension)
+
+        # Set the sw value of cornerline i+1,j+1 to
+        # the far right corner of cell i,j to
+        result[1:, 1:, 1:, 2] = zcorn[:, 1, :, 1, 0, :]
+        result[1:, 1:, 0, 2] = zcorn[:, 1, :, 1, 1, 0]
+
+        # Set the se value of cornerline i,j+1 to
+        # the far left corner of cell i,j
+        result[:nx, 1:, 1:, 3] = zcorn[:, 0, :, 1, 0, :]
+        result[:nx, 1:, 0, 3] = zcorn[:, 0, :, 1, 1, 0]
+
+        # Set the ne value of cornerline i,j to
+        # the near left corner of cell i,j
+        result[:nx, :ny, 1:, 1] = zcorn[:, 0, :, 0, 0, :]
+        result[:nx, :ny, 0, 1] = zcorn[:, 0, :, 0, 1, 0]
+
+        # Set the nw value of cornerline i+1,j to
+        # the near right corner of cell i,j
+        result[1:, :ny, 1:, 0] = zcorn[:, 1, :, 0, 0, :]
+        result[1:, :ny, 0, 0] = zcorn[:, 1, :, 0, 1, 0]
+
+        # For the remaining 6 faces, 4 lines, and 4 corners, they are all
+        # special cases and have some insignificant values where we duplicate
+        # the value of the adjacent cell.
+
+        # sw->se face
+        result[1:nx, 0, :, 2] = result[1:nx, 0, :, 0]
+        result[1:nx, 0, :, 3] = result[1:nx, 0, :, 1]
+
+        # vertical sw corner line
+        result[0, 0, :, 0] = result[0, 0, :, 1]
+        result[0, 0, :, 2] = result[0, 0, :, 1]
+        result[0, 0, :, 3] = result[0, 0, :, 1]
+
+        # se->ne face
+        result[nx, 1:ny, :, 1] = result[nx, 1:ny, :, 0]
+        result[nx, 1:ny, :, 3] = result[nx, 1:ny, :, 2]
+
+        # vertical se corner line
+        result[nx, 0, :, 1] = result[nx, 0, :, 0]
+        result[nx, 0, :, 2] = result[nx, 0, :, 0]
+        result[nx, 0, :, 3] = result[nx, 0, :, 0]
+
+        # nw->ne face
+        result[1:nx, ny, :, 0] = result[1:nx, ny, :, 2]
+        result[1:nx, ny, :, 1] = result[1:nx, ny, :, 3]
+
+        # vertical nw corner line
+        result[0, ny, :, 0] = result[0, ny, :, 3]
+        result[0, ny, :, 1] = result[0, ny, :, 3]
+        result[0, ny, :, 2] = result[0, ny, :, 3]
+
+        # sw->nw face
+        result[0, 1:ny, :, 0] = result[0, 1:ny, :, 1]
+        result[0, 1:ny, :, 2] = result[0, 1:ny, :, 3]
+
+        # vertical ne corner line
+        result[nx, ny, :, 0] = result[nx, ny, :, 2]
+        result[nx, ny, :, 1] = result[nx, ny, :, 2]
+        result[nx, ny, :, 3] = result[nx, ny, :, 2]
+
+        return np.ascontiguousarray(result)
 
     @staticmethod
     def from_xtgeo_grid(xtgeo_grid):
@@ -330,19 +399,37 @@ class GrdeclGrid:
 
         nx, ny, nz = xtgeo_grid.dimensions
         actnum = xtgeo_grid._actnumsv.ravel()
-        if np.all(actnum):
+        if np.all(actnum == 1):
             actnum = None
         coord = xtgeo_grid._coordsv.ravel()
-        zcorn = np.zeros((nx, 2, ny, 2, nz, 2))
+        zcorn = np.zeros((nx, 2, ny, 2, 2, nz))
         xtgeo_zcorn = xtgeo_grid._zcornsv.reshape((nx + 1, ny + 1, nz + 1, 4))
-        zcorn[:, 0, :, 0, :, 0] = xtgeo_zcorn[:nx, :ny, :nz, 0]
-        zcorn[:, 0, :, 0, :, 1] = xtgeo_zcorn[:nx, :ny, :nz, 1]
-        zcorn[:, 0, :, 1, :, 0] = xtgeo_zcorn[:nx, :ny, :nz, 2]
-        zcorn[:, 0, :, 1, :, 1] = xtgeo_zcorn[:nx, :ny, :nz, 3]
-        zcorn[:, 1, :, 0, :, 0] = xtgeo_zcorn[1:, 1:, 1:, 0]
-        zcorn[:, 1, :, 0, :, 1] = xtgeo_zcorn[1:, 1:, 1:, 1]
-        zcorn[:, 1, :, 1, :, 0] = xtgeo_zcorn[1:, 1:, 1:, 2]
-        zcorn[:, 1, :, 1, :, 1] = xtgeo_zcorn[1:, 1:, 1:, 3]
+
+        # This is the reverse operation of that of xtgeo_zcorn,
+        # see that function for description of operations.
+
+        # Set the far right corner of cell i,j to
+        # the sw value of cornerline i+1,j+1
+        zcorn[:, 1, :, 1, 0, :nz] = xtgeo_zcorn[1:, 1:, 1:, 2]
+        zcorn[:, 1, :, 1, 1, :] = xtgeo_zcorn[1:, 1:, :nz, 2]
+
+        # Set the far left corner of cell i,j to
+        # the se value of cornerline i,j+1
+        zcorn[:, 0, :, 1, 0, :nz] = xtgeo_zcorn[:nx, 1:, 1:, 3]
+        zcorn[:, 0, :, 1, 1, :] = xtgeo_zcorn[:nx, 1:, :nz, 3]
+
+        # Set the near left corner of cell i,j to
+        # the ne value of cornerline i,j
+        zcorn[:, 0, :, 0, 0, :nz] = xtgeo_zcorn[:nx, :ny, 1:, 1]
+        zcorn[:, 0, :, 0, 1, :] = xtgeo_zcorn[:nx, :ny, :nz, 1]
+
+        # Set the near right corner of cell i,j to
+        # the nw value of cornerline i+1,j
+        zcorn[:, 1, :, 0, 0, :nz] = xtgeo_zcorn[1:, :ny, 1:, 0]
+        zcorn[:, 1, :, 0, 1, :] = xtgeo_zcorn[1:, :ny, :nz, 0]
+
+        for i in range(3, 6):
+            zcorn = np.swapaxes(zcorn, i, 5 - i)
         zcorn = zcorn.ravel()
 
         return GrdeclGrid(

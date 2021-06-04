@@ -5,7 +5,7 @@ import hypothesis.strategies as st
 import numpy as np
 import pytest
 import roffio
-from hypothesis import HealthCheck, given, note, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis.extra.numpy import arrays
 from numpy.testing import assert_allclose
 
@@ -102,13 +102,15 @@ def create_compatible_zcorn(draw, dims):
     nx, ny, nz = dims
     array = draw(
         arrays(
-            shape=(nx, 2, ny, 2, nz, 2),
+            shape=(nx, 2, ny, 2, 2, nz),
             dtype=np.float32,
             elements=finites,
         )
     )
-    array[1:nx, 0, 1:ny, :, 1:nz, :] = array[1:nx, 1, 1:ny, :, 1:nz, :]
-    return array
+    array[:, :, :, :, 0, : nz - 1] = array[:, :, :, :, 1, 1:]
+    for i in range(3, 6):
+        array = np.swapaxes(array, i, 5 - i)
+    return array.ravel()
 
 
 xtgeo_compatible_grdecl_grids = grdecl_grids(
@@ -126,8 +128,6 @@ xtgeo_compatible_grdecl_grids = grdecl_grids(
 def test_grdecl_grid_read_write(tmp_path, grgrid):
     tmp_file = tmp_path / "grid.grdecl"
     grgrid.to_file(tmp_file)
-    grgrid2 = ggrid.GrdeclGrid.from_file(tmp_file)
-    note(f"{grgrid2},\n {grgrid}")
     assert ggrid.GrdeclGrid.from_file(tmp_file) == grgrid
 
 
@@ -149,6 +149,7 @@ def test_to_from_xtgeogrid_format1(xtggrid):
     xtggrid._xtgformat2()
     assert_allclose(grdecl_grid.xtgeo_actnum(), xtggrid._actnumsv, atol=0.02)
     assert_allclose(grdecl_grid.xtgeo_coord(), xtggrid._coordsv, atol=0.02)
+    nx, ny, nz = grdecl_grid.dimensions
     assert_allclose(grdecl_grid.xtgeo_zcorn(), xtggrid._zcornsv, atol=0.02)
 
 
@@ -163,7 +164,10 @@ def test_to_from_grdeclgrid(grdecl_grid):
     xtggrid._nrow = ny
     xtggrid._nlay = nz
 
-    grdeclgrid2 = ggrid.GrdeclGrid.from_xtgeo_grid(xtggrid)
+    grdecl_grid2 = ggrid.GrdeclGrid.from_xtgeo_grid(xtggrid)
+    assert_allclose(grdecl_grid2.xtgeo_actnum(), xtggrid._actnumsv, atol=0.02)
+    assert_allclose(grdecl_grid2.xtgeo_coord(), xtggrid._coordsv, atol=0.02)
+    assert_allclose(grdecl_grid2.xtgeo_zcorn(), xtggrid._zcornsv, atol=0.02)
 
 
 @given(xtgeo_compatible_grdecl_grids)

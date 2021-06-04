@@ -1,31 +1,31 @@
 # -*- coding: utf-8 -*-
 """Module/class for 3D grids (corner point geometry) with XTGeo."""
 
-import pathlib
 import json
+import pathlib
 import warnings
-from pathlib import Path
 from collections import OrderedDict
-from typing import Union, Optional, List, Tuple
+from pathlib import Path
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import numpy.ma as ma
-
 import xtgeo
-
 from xtgeo.common import XTGDescription
-from ._grid3d import _Grid3D
 
-from . import _grid_hybrid
-from . import _grid_import
-from . import _grid_import_xtgcpgeom
-from . import _grid_export
-from . import _grid_refine
-from . import _grid_etc1
-from . import _grid_wellzone
-from . import _grid3d_fence
-from . import _grid_roxapi
-from . import _gridprop_lowlevel
+from . import (
+    _grid3d_fence,
+    _grid_etc1,
+    _grid_export,
+    _grid_hybrid,
+    _grid_import,
+    _grid_import_xtgcpgeom,
+    _grid_refine,
+    _grid_roxapi,
+    _grid_wellzone,
+    _gridprop_lowlevel,
+)
+from ._grid3d import _Grid3D
 
 xtg = xtgeo.common.XTGeoDialog()
 logger = xtg.functionlogger(__name__)
