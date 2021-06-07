@@ -1,19 +1,13 @@
-import io
-from itertools import product
-
 import hypothesis.strategies as st
 import numpy as np
-import pytest
-import roffio
 from hypothesis import HealthCheck, given, settings
 from hypothesis.extra.numpy import arrays
 from numpy.testing import assert_allclose
 
-import xtgeo.cxtgeo._cxtgeo as _cxtgeo
 import xtgeo.grid3d._grdecl_grid as ggrid
 from xtgeo.grid3d import Grid
 
-from .grid_generator import dimensions, indecies, xtgeo_grids
+from .grid_generator import indecies, xtgeo_grids
 
 finites = st.floats(
     min_value=-100.0, max_value=100.0, allow_nan=False, allow_infinity=False, width=32
