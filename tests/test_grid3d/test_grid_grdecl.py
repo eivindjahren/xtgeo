@@ -117,7 +117,7 @@ xtgeo_compatible_grdecl_grids = grdecl_grids(
 )
 
 
-@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(grdecl_grids())
 def test_grdecl_grid_read_write(tmp_path, grgrid):
     tmp_file = tmp_path / "grid.grdecl"
@@ -165,7 +165,7 @@ def test_to_from_grdeclgrid(grdecl_grid):
     assert_allclose(grdecl_grid2.xtgeo_zcorn(), xtggrid._zcornsv, atol=0.02)
 
 
-@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(xtgeo_compatible_grdecl_grids)
 def test_to_from_grdeclgrid_write(tmp_path, caplog, grdecl_grid):
     xtggrid = Grid()
