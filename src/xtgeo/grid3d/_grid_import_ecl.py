@@ -2,14 +2,15 @@
 
 """Grid import functions for Eclipse, new approach (i.e. version 2)."""
 
-import re
 import os
+import re
 from tempfile import mkstemp
+
 import numpy as np
 
 import xtgeo
 import xtgeo.cxtgeo._cxtgeo as _cxtgeo
-
+from xtgeo.grid3d._grdecl_grid import GrdeclGrid
 from xtgeo.grid3d._grid_eclbin_record import eclbin_record
 
 from . import _grid3d_utils as utils
@@ -146,6 +147,23 @@ def import_ecl_run(self, groot, initprops=None, restartprops=None, restartdates=
 
     self.gridprops = grdprops
 
+
+# def import_ecl_grdecl(self, gfile):
+#    """Import grdecl format."""
+#
+#    grdecl_grid = GrdeclGrid.from_file(gfile._file)
+#
+#    self._ncol, self._nrow, self._nlay = grdecl_grid.dimensions
+#
+#    logger.info("NX NY NZ in grdecl file: %s %s %s", self._ncol, self._nrow, self._nlay)
+#
+#    logger.info("Reading...")
+#
+#    self._coordsv = grdecl_grid.xtgeo_coord()
+#    self._zcornsv = grdecl_grid.xtgeo_zcorn()
+#    self._actnumsv = grdecl_grid.xtgeo_actnum()
+#    self._subgrids = None
+#    self._xtgformat = 2
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Import eclipse input .GRDECL

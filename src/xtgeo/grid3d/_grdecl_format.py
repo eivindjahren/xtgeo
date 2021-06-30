@@ -208,20 +208,26 @@ def open_grdecl(grdecl_file, keywords, max_len=None, ignore=IGNORE_ALL):
         line_no = 1
         line = grdecl_stream.readline()
         while line:
-            if not line:
-                continue
+            if line is None:
+                break
 
             if keyword is None:
                 if max_len:
-                    snubbed = line[0:max_len]
+                    snubbed = line[0 : min(max_len, len(line))]
                 else:
                     snubbed = line
                 matched_keywords = [kw for kw in keywords if match_keyword(kw, snubbed)]
                 if matched_keywords:
                     keyword = matched_keywords[0]
                     logger.debug("Keyword %s found on line %d", keyword, line_no)
-                elif ignore is not IGNORE_ALL and snubbed.rsplit() not in ignore:
-                    raise ValueError("Unrecognized keyword {line}")
+                elif (
+                    list(split_line(line))  # Not an empty line
+                    and ignore is not IGNORE_ALL  # Not ignoring all
+                    and snubbed.rsplit() not in ignore  # Not ignoring this
+                ):
+                    raise ValueError(
+                        f"Unrecognized keyword {repr(line)} on line {line_no}"
+                    )
 
             else:
                 for word in split_line(line):

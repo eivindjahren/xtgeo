@@ -96,12 +96,12 @@ def create_compatible_zcorn(draw, dims):
     nx, ny, nz = dims
     array = draw(
         arrays(
-            shape=(nx, 2, ny, 2, 2, nz),
+            shape=(2, nx, 2, ny, 2, nz),
             dtype=np.float32,
             elements=finites,
         )
     )
-    array[:, :, :, :, 0, : nz - 1] = array[:, :, :, :, 1, 1:]
+    array[:, :, :, :, 1, : nz - 1] = array[:, :, :, :, 0, 1:]
     for i in range(3, 6):
         array = np.swapaxes(array, i, 5 - i)
     return array.ravel()
@@ -157,11 +157,31 @@ def test_to_from_grdeclgrid(grdecl_grid):
     xtggrid._ncol = nx
     xtggrid._nrow = ny
     xtggrid._nlay = nz
+    xtggrid._xtgformat = 2
 
     grdecl_grid2 = ggrid.GrdeclGrid.from_xtgeo_grid(xtggrid)
     assert_allclose(grdecl_grid2.xtgeo_actnum(), xtggrid._actnumsv, atol=0.02)
     assert_allclose(grdecl_grid2.xtgeo_coord(), xtggrid._coordsv, atol=0.02)
     assert_allclose(grdecl_grid2.xtgeo_zcorn(), xtggrid._zcornsv, atol=0.02)
+
+
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(xtgeo_compatible_grdecl_grids)
+def test_to_from_grdeclgrid_write(tmp_path, caplog, grdecl_grid):
+    xtggrid = Grid()
+    xtggrid._actnumsv = grdecl_grid.xtgeo_actnum()
+    xtggrid._coordsv = grdecl_grid.xtgeo_coord()
+    xtggrid._zcornsv = grdecl_grid.xtgeo_zcorn()
+    nx, ny, nz = grdecl_grid.dimensions
+    xtggrid._ncol = nx
+    xtggrid._nrow = ny
+    xtggrid._nlay = nz
+    xtggrid._xtgformat = 2
+
+    xtggrid.to_file(tmp_path / "xtggrid.grdecl", fformat="grdecl")
+    grdecl_grid2 = ggrid.GrdeclGrid.from_file(tmp_path / "xtggrid.grdecl")
+
+    assert_allclose(grdecl_grid.zcorn, grdecl_grid2.zcorn, atol=0.1)
 
 
 @given(xtgeo_compatible_grdecl_grids)
